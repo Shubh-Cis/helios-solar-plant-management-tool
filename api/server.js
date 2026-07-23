@@ -31,10 +31,15 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/erp-crm', erpCrmRoutes);
 
-// Serves built React client dynamically in production
-const distPath = fs.existsSync(path.resolve(process.cwd(), 'dist'))
-  ? path.resolve(process.cwd(), 'dist')
-  : path.resolve(__dirname, '../dist');
+// Bulletproof dynamic multi-path resolution for React Vite build directory
+const possibleDistPaths = [
+  path.resolve(process.cwd(), 'dist'),
+  path.resolve(process.cwd(), '../dist'),
+  path.resolve(__dirname, '../dist'),
+  path.resolve(__dirname, '../../dist'),
+];
+
+const distPath = possibleDistPaths.find(p => fs.existsSync(path.join(p, 'index.html'))) || possibleDistPaths[0];
 
 app.use(express.static(distPath));
 
@@ -45,7 +50,7 @@ app.use((req, res, next) => {
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
-    res.status(404).send(`Helios API Server is live, but frontend build assets were not found at ${distPath}.`);
+    res.status(404).send(`Helios API Server is live on Railway, but index.html was not found. Looked in: ${possibleDistPaths.join(', ')}`);
   }
 });
 
