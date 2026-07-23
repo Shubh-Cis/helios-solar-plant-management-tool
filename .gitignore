@@ -1,22 +1,48 @@
-# Logs
-logs
+# Dependencies & Packages
+node_modules/
+api/node_modules/
+.pnpm-store/
+
+# Production Build Outputs (Generated on Railway server during build)
+dist/
+dist-ssr/
+build/
+out/
+*.tsbuildinfo
+
+# Environment & Secrets (NEVER commit secrets to GitHub)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+
+# Local Databases (Railway uses managed PostgreSQL)
+*.db
+*.sqlite
+*.sqlite-journal
+dev.db
+dev.db-journal
+prisma/dev.db
+
+# Logs & Debugging
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# Railway CLI Config
+.railway/
 
-# Editor directories and files
+# Editor & System Files
+.DS_Store
+Thumbs.db
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
