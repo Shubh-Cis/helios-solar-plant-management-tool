@@ -37,6 +37,9 @@ const possibleDistPaths = [
   path.resolve(process.cwd(), '../dist'),
   path.resolve(__dirname, '../dist'),
   path.resolve(__dirname, '../../dist'),
+  path.resolve(__dirname, './dist'),
+  '/app/dist',
+  '/app/api/dist'
 ];
 
 const distPath = possibleDistPaths.find(p => fs.existsSync(path.join(p, 'index.html'))) || possibleDistPaths[0];
