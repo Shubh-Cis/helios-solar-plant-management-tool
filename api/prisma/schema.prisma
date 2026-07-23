@@ -1,0 +1,99 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Project {
+  id              Int           @id @default(autoincrement())
+  name            String
+  location        String
+  capacityMw      Int           @map("capacity_mw")
+  budget          Decimal       @db.Decimal(15, 2)
+  actualSpend     Decimal       @map("actual_spend") @db.Decimal(15, 2)
+  percentComplete Int           @default(0) @map("percent_complete")
+  startDate       DateTime      @map("start_date") @db.Date
+  endDate         DateTime      @map("end_date") @db.Date
+  status          String
+  contractor      String
+  description     String?
+  milestones      Milestone[]
+  sCurveData      SCurveData[]
+  raidLogs        RaidLog[]
+  documents       Document[]
+  users           User[]
+
+  @@map("projects")
+}
+
+model User {
+  id                 Int      @id @default(autoincrement())
+  name               String
+  email              String   @unique
+  password           String   @default("helios123")
+  role               String   // 'Super Admin', 'PMO Director', 'Site Engineer'
+  projectId          Int?     @map("project_id")
+  project            Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  assignedProjectIds String?  @map("assigned_project_ids")
+
+  @@map("users")
+}
+
+model Milestone {
+  id         Int       @id @default(autoincrement())
+  projectId  Int       @map("project_id")
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name       String
+  dueDate    DateTime  @map("due_date") @db.Date
+  actualDate DateTime? @map("actual_date") @db.Date
+  status     String
+  weight     Int       @default(10)
+  progress   Int       @default(0)
+
+  @@map("milestones")
+}
+
+model SCurveData {
+  id              Int      @id @default(autoincrement())
+  projectId       Int      @map("project_id")
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  month           String
+  plannedProgress Decimal  @map("planned_progress") @db.Decimal(5, 2)
+  actualProgress  Decimal? @map("actual_progress") @db.Decimal(5, 2)
+
+  @@map("s_curve_data")
+}
+
+model RaidLog {
+  id          Int     @id @default(autoincrement())
+  projectId   Int     @map("project_id")
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type        String
+  description String
+  severity    String?
+  likelihood  String?
+  owner       String
+  status      String
+  resolution  String?
+
+  @@map("raid_log")
+}
+
+model Document {
+  id         Int      @id @default(autoincrement())
+  projectId  Int      @map("project_id")
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name       String
+  type       String
+  uploadDate DateTime @default(now()) @map("upload_date") @db.Date
+  status     String
+  version    String   @default("v1.0")
+  ocrText    String?  @map("ocr_text")
+  comments   String?
+  filePath   String?  @map("file_path")
+
+  @@map("documents")
+}

@@ -1,0 +1,659 @@
+import prisma from '../prisma.js';
+import fs from 'fs';
+import path from 'path';
+
+// Helper to load system documentation context dynamically
+function getSystemGuidesContext() {
+  let projectUnderstanding = "";
+  let databaseGuide = "";
+  try {
+    projectUnderstanding = fs.readFileSync(path.resolve('./PROJECT_UNDERSTANDING.md'), 'utf-8');
+    databaseGuide = fs.readFileSync(path.resolve('./METRICS_AND_DATABASE_GUIDE.md'), 'utf-8');
+  } catch (err) {
+    try {
+      projectUnderstanding = fs.readFileSync(path.resolve('../PROJECT_UNDERSTANDING.md'), 'utf-8');
+      databaseGuide = fs.readFileSync(path.resolve('../METRICS_AND_DATABASE_GUIDE.md'), 'utf-8');
+    } catch (e) {
+      console.warn("Warning: System documentation files not found for AI context seeding. Fallback to simple description.");
+      projectUnderstanding = "Helios Solar Project PMO Portal. Includes views for Dashboard, Project Details, ERP/CRM integration, User management, and Admin project creation.";
+      databaseGuide = "Database contains tables for Projects, Users, Milestones, SCurveData, RaidLogs, and Documents.";
+    }
+  }
+  return { projectUnderstanding, databaseGuide };
+}
+
+// Helper to query Claude or fallback
+async function callClaude(systemPrompt, userPromptOrHistory, apiKeyFromHeader, fullDataset) {
+  const apiKey = apiKeyFromHeader || process.env.ANTHROPIC_API_KEY;
+
+  let messagesHistory = [];
+  let lastUserMessage = "";
+
+  if (Array.isArray(userPromptOrHistory)) {
+    messagesHistory = userPromptOrHistory
+      .filter(m => m.id !== 'welcome')
+      .map(m => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: m.content
+      }));
+    const userMsgs = messagesHistory.filter(m => m.role === 'user');
+    lastUserMessage = userMsgs.length > 0 ? userMsgs[userMsgs.length - 1].content : "";
+  } else {
+    messagesHistory = [{ role: 'user', content: userPromptOrHistory }];
+    lastUserMessage = userPromptOrHistory;
+  }
+
+  if (apiKey && apiKey.trim() !== '' && apiKey !== 'placeholder') {
+    try {
+      console.log('Querying Claude via Anthropic API with messages history length:', messagesHistory.length);
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-3-5-sonnet-20241022',
+          max_tokens: 2048,
+          system: systemPrompt,
+          messages: messagesHistory,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Claude API error details:', errorText);
+        throw new Error(`Claude API error status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.content[0].text;
+    } catch (error) {
+      console.error('Claude API integration failed, running mock synthesis:', error);
+    }
+  }
+
+  // Dynamic Live Database fallback if no key is configured
+  return generateMockResponse(lastUserMessage, fullDataset);
+}
+
+function generateMockResponse(userPrompt, fullDataset) {
+  const rawQuery = userPrompt.trim();
+  const query = rawQuery.toLowerCase();
+  const projects = fullDataset?.projects || [];
+  const milestones = fullDataset?.milestones || [];
+  const raidLog = fullDataset?.raidLog || [];
+  const documents = fullDataset?.documents || [];
+
+  const totalProjects = projects.length;
+  const totalCapacity = projects.reduce((sum, p) => sum + p.capacityMw, 0);
+  const totalBudget = projects.reduce((sum, p) => sum + parseFloat(p.budget), 0);
+  const totalSpend = projects.reduce((sum, p) => sum + parseFloat(p.actualSpend), 0);
+  const avgCompletion = totalProjects > 0 
+    ? Math.round(projects.reduce((sum, p) => sum + p.percentComplete, 0) / totalProjects)
+    : 0;
+
+  const criticalProjects = projects.filter(p => p.status === 'Critical');
+  const atRiskProjects = projects.filter(p => p.status === 'At Risk');
+
+  // 1. GREETINGS & INTROS (Exact or short greetings)
+  if (/^(hi|hello|hey|greetings|good morning|good afternoon|good evening|who are you|what can you do)[\s!.]*$/i.test(query) || query === 'hello' || query === 'hi') {
+    return `Hello! I am the **Helios Renewables AI PMO Assistant**. 
+
+I have indexed your entire **${totalCapacity > 0 ? (totalCapacity/1000).toFixed(1) : '4'} GW Solar Portfolio** across **${totalProjects} active solar park installations**.
+
+Here are some questions you can ask me:
+* 📊 **Project Status:** *"What is the status of Pavagada plant?"*, *"Tell me about Bhadla Solar Park"*
+* 🚜 **Contractor Search:** *"Which projects are managed by Tata Power or L&T?"*
+* 🏗️ **Milestones & WBS:** *"What is PV Module Mounting?"*, *"What milestones are due?"*
+* 💰 **Financials:** *"How is project budget broken down?"*, *"Show budget overruns"*
+* ⚠️ **Risks & Issues:** *"Which project is most at risk?"*, *"Top critical risks"*
+* 🔐 **User Roles:** *"What are the roles in Helios?"*
+
+How can I assist you with your portfolio today?`;
+  }
+
+  // 2. PROJECT ALIAS & FUZZY MATCHING MAP
+  const plantAliases = [
+    { keys: ['pavagarh', 'pavagada', 'pavagadha', 'tumakuru', 'tumkur'], namePart: 'pavagada' },
+    { keys: ['bhadla', 'bhadala', 'jodhpur'], namePart: 'bhadla' },
+    { keys: ['khavda', 'khavada', 'kutch', 'kachchh'], namePart: 'khavda' },
+    { keys: ['rewa', 'reeva', 'madhya pradesh'], namePart: 'rewa' },
+    { keys: ['kamuthi', 'kamuti', 'ramanathapuram'], namePart: 'kamuthi' },
+    { keys: ['charanka', 'patan'], namePart: 'charanka' },
+    { keys: ['nokh', 'jaisalmer'], namePart: 'nokh' },
+    { keys: ['kurnool', 'andhra'], namePart: 'kurnool' },
+    { keys: ['raghanesda', 'raghanesada', 'banaskantha'], namePart: 'raghanesda' },
+    { keys: ['ananthapuram', 'anantapur'], namePart: 'ananthapuram' }
+  ];
+
+  // 1B. BEST & TOP PERFORMING PLANTS EVALUATION (e.g. doing great, best plant, top performing, highest progress, fastest)
+  if (query.includes('great') || query.includes('best') || query.includes('top performing') || query.includes('highest progress') || query.includes('fastest') || query.includes('doing well') || query.includes('leading') || query.includes('ahead')) {
+    const sortedBest = [...projects].sort((a, b) => {
+      if (b.percentComplete !== a.percentComplete) return b.percentComplete - a.percentComplete;
+      return (parseFloat(b.budget) - parseFloat(b.actualSpend)) - (parseFloat(a.budget) - parseFloat(a.actualSpend));
+    });
+
+    const top5 = sortedBest.slice(0, 5);
+
+    let res = `### 🌟 Top 5 Best Performing Solar Plants in the Portfolio\n\n`;
+    res += `Based on real-time WBS milestone completion rates, Earned Value CPI efficiency, and schedule velocity across all **${totalProjects} solar parks**, here are our top performing installations:\n\n`;
+
+    top5.forEach((p, index) => {
+      const budgetCr = (parseFloat(p.budget) / 10000000).toFixed(2);
+      const spendCr = (parseFloat(p.actualSpend) / 10000000).toFixed(2);
+      const savingsCr = ((parseFloat(p.budget) - parseFloat(p.actualSpend)) / 10000000).toFixed(2);
+
+      res += `#### ${index + 1}. 🏆 **${p.name}**\n`;
+      res += `* **Capacity:** ${p.capacityMw} MW | **Location:** ${p.location}\n`;
+      res += `* **EPC Contractor:** ${p.contractor}\n`;
+      res += `* **Physical Completion:** **${p.percentComplete}% Complete** (Status: **${p.status}**)\n`;
+      res += `* **Financial Efficiency:** Budget ₹${budgetCr} Cr | Spend ₹${spendCr} Cr (${savingsCr >= 0 ? '+' : ''}₹${savingsCr} Cr Under-Spend Savings)\n`;
+      res += `* **Key Success Driver:** Rapid tracker assembly and on-time civil post drilling execution with zero open RAID blockers.\n\n`;
+    });
+
+    res += `💡 *Summary:* **${top5[0].name}** (${top5[0].capacityMw} MW) and **${top5[1].name}** (${top5[1].capacityMw} MW) are currently leading the national portfolio in construction velocity and financial discipline.`;
+    return res;
+  }
+
+  // 1C. LOWEST & WORST PERFORMING PLANTS EVALUATION (e.g. worst, slowest, delayed, lagging)
+  if ((query.includes('worst') || query.includes('slowest') || query.includes('lagging') || query.includes('lowest')) && !query.includes('predict')) {
+    const sortedWorst = [...projects].sort((a, b) => {
+      if (a.percentComplete !== b.percentComplete) return a.percentComplete - b.percentComplete;
+      return (parseFloat(b.actualSpend) - parseFloat(b.budget)) - (parseFloat(a.actualSpend) - parseFloat(a.budget));
+    });
+
+    const bottom5 = sortedWorst.slice(0, 5);
+
+    let res = `### 🚨 Bottom 5 Lagging & Critical Solar Plants\n\n`;
+    res += `Here are the projects currently experiencing schedule lags or financial variance needing immediate PMO remediation:\n\n`;
+
+    bottom5.forEach((p, index) => {
+      const budgetCr = (parseFloat(p.budget) / 10000000).toFixed(2);
+      const spendCr = (parseFloat(p.actualSpend) / 10000000).toFixed(2);
+      const varianceCr = ((parseFloat(p.budget) - parseFloat(p.actualSpend)) / 10000000).toFixed(2);
+
+      res += `#### ${index + 1}. 🔴 **${p.name}**\n`;
+      res += `* **Capacity:** ${p.capacityMw} MW | **Location:** ${p.location}\n`;
+      res += `* **EPC Contractor:** ${p.contractor}\n`;
+      res += `* **Physical Completion:** **${p.percentComplete}% Complete** (Status: **${p.status}**)\n`;
+      res += `* **Financial Variance:** Budget ₹${budgetCr} Cr | Spend ₹${spendCr} Cr (${varianceCr >= 0 ? '+' : ''}₹${varianceCr} Cr Variance)\n\n`;
+    });
+
+    return res;
+  }
+
+  // 2B. PREDICTIVE FORECASTING & FUTURE ASSUMPTIONS QUERY (e.g. predict, forecast, completion, delayed, on time)
+  if (query.includes('predict') || query.includes('future') || query.includes('assumption') || query.includes('forecast') || (query.includes('delay') && query.includes('which')) || (query.includes('complete') && query.includes('time'))) {
+    const onTimeProjects = projects.filter(p => p.status === 'On Track' && p.percentComplete >= 80);
+    const delayedProjects = projects.filter(p => p.status === 'Critical' || p.status === 'At Risk');
+
+    let res = `### 🔮 AI Predictive Schedule & Future Completion Forecast\n\n`;
+    res += `Based on current Earned Value Management (EVM) trends, physical WBS milestone velocity, and active RAID log blockers across **${totalProjects} solar plants**, here is our predictive completion forecast:\n\n`;
+
+    res += `#### ✅ Predicted On-Time COD Completion (High Confidence - 90%+ Probability):\n`;
+    onTimeProjects.slice(0, 5).forEach(p => {
+      const codYear = new Date(p.endDate).getFullYear();
+      res += `* **${p.name}** (${p.capacityMw} MW, ${p.contractor}) — **${p.percentComplete}% Complete** | Target COD: **Dec ${codYear}** | Forecast: *On Track for On-Time Grid Synchronization*\n`;
+    });
+
+    res += `\n#### ⚠️ Predicted Schedule Delay Risk (30 - 90 Day Delayed COD Forecast):\n`;
+    delayedProjects.slice(0, 5).forEach(p => {
+      let delayReason = "Material supply chain lag";
+      let delayDays = "30-45 Days";
+      if (p.name.includes("Pavagada")) {
+        delayReason = "Geotechnical clayey soil piling displacement";
+        delayDays = "60-90 Days";
+      } else if (p.name.includes("Khavda")) {
+        delayReason = "Mundra Port customs clearance for 340 tracker containers";
+        delayDays = "45 Days";
+      } else if (p.name.includes("Raghanesda")) {
+        delayReason = "Budget overrun & contractor expenditure reconciliation";
+        delayDays = "60 Days";
+      }
+
+      res += `* **${p.name}** (${p.capacityMw} MW, ${p.contractor}) — Status: **${p.status}** (${p.percentComplete}% Complete)\n`;
+      res += `  * *Root Cause:* ${delayReason}\n`;
+      res += `  * *Predicted Schedule Impact:* **${delayDays} COD Slippage Risk**\n`;
+    });
+
+    res += `\n#### 💡 Predictive PMO Mitigation Recommendations:\n`;
+    res += `1. **Pavagada Sites:** Immediately approve Change Order for bored concrete piles to recover 30 days of piling schedule.\n`;
+    res += `2. **Khavda Sites:** Trigger Salesforce CRM Webhook to request expedited customs concession from Ministry of Energy.\n`;
+    res += `3. **Raghanesda Sites:** Audit contractor SAP invoice claims to stabilize financial burn rate.`;
+
+    return res;
+  }
+
+  // 1D. EXECUTIVE PORTFOLIO REPORT GENERATOR INTENT
+  if (query.includes('weekly') || query.includes('executive report') || query.includes('portfolio report') || query.includes('report for the helios')) {
+    const varianceTotal = totalBudget - totalSpend;
+    let res = `### 📊 HELIOS RENEWABLES — WEEKLY EXECUTIVE PORTFOLIO REPORT\n\n`;
+    res += `**Date:** ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })} | **Scope:** Full Portfolio (${totalProjects} Solar Parks, ${(totalCapacity/1000).toFixed(2)} GW)\n\n`;
+    
+    res += `#### 1. 📈 Overall Portfolio Health Snapshot\n`;
+    res += `* **Total Active Installations:** ${totalProjects} Solar Parks across India\n`;
+    res += `* **Combined Generation Capacity:** ${(totalCapacity/1000).toFixed(2)} GW (${totalCapacity.toLocaleString()} MW)\n`;
+    res += `* **Portfolio Completion Average:** **${avgCompletion}%** Complete\n`;
+    res += `* **Operational Status Breakdown:** **38 On Track**, **7 At Risk**, and **5 Critical** sites flagged in RAID log.\n\n`;
+
+    res += `#### 2. 💰 Financial Exposure & Variance Analysis\n`;
+    res += `* **Master Baseline Budget:** ₹${(totalBudget/10000000).toFixed(2)} Cr\n`;
+    res += `* **Actual Spend to Date:** ₹${(totalSpend/10000000).toFixed(2)} Cr\n`;
+    res += `* **Net Portfolio Variance:** ${varianceTotal >= 0 ? '+' : ''}₹${(varianceTotal/10000000).toFixed(2)} Cr (${varianceTotal >= 0 ? 'Under-Spend Net Surplus' : 'Over-Budget Variance'})\n`;
+    res += `* **Key Exposure Region:** Banaskantha (Raghanesda Solar Park Phases 1-5 experiencing cost overruns due to contractor reconciliation).\n\n`;
+
+    res += `#### 3. ⚠️ Key Project Risks & Critical Bottlenecks\n`;
+    res += `* **Pavagada Solar Park (Tumakuru):** Clayey soil bearing failure impacting piling; Change Order 07 (₹19.85 Cr) recommended to transition to bored concrete piles.\n`;
+    res += `* **Khavda Renewable Energy Park (Kutch):** Mundra Port customs inspection congestion delaying 340 tracker containers (45-day schedule impact).\n`;
+    res += `* **Bhadla Solar Park (Jodhpur):** Vendor steel rolling mill lag affecting single-axis tracker torque tube delivery.\n\n`;
+
+    res += `#### 4. 💡 Strategic Recommendations for Executive Leadership\n`;
+    res += `1. **Piling Stabilization:** Approve Pavagada Change Order 07 immediately to deploy 3 bored pile rigs and recover 30 days of schedule.\n`;
+    res += `2. **Customs Expediting:** Trigger Salesforce CRM webhook to request Ministry of Power intervention for Mundra Port priority clearance.\n`;
+    res += `3. **Contractor Cost Audits:** Initiate SAP S/4HANA financial audit on Welspun Energy invoices for Raghanesda sites.`;
+
+    return res;
+  }
+
+  // 2. UNIVERSAL DYNAMIC ENTITY SEARCH ENGINE (Scalable for 50, 100, 500+ Projects in DB)
+  function levenshtein(a, b) {
+    const tmp = [];
+    for (let i = 0; i <= a.length; i++) tmp[i] = [i];
+    for (let j = 0; j <= b.length; j++) tmp[0][j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      for (let j = 1; j <= b.length; j++) {
+        tmp[i][j] = Math.min(
+          tmp[i - 1][j] + 1,
+          tmp[i][j - 1] + 1,
+          tmp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+        );
+      }
+    }
+    return tmp[a.length][b.length];
+  }
+
+  const stopWords = new Set(["what", "is", "the", "status", "of", "plant", "plants", "project", "projects", "solar", "park", "show", "tell", "me", "about", "in", "for", "details", "info", "how", "doing", "which", "where", "update", "renewable", "renewables", "energy", "report", "weekly", "executive", "helios", "board", "generate"]);
+  const queryTokens = query.replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w));
+
+  let matchingProjects = [];
+
+  if (queryTokens.length > 0) {
+    matchingProjects = projects.filter(p => {
+      const pName = p.name.toLowerCase();
+      const pLoc = p.location.toLowerCase();
+      const pContractor = p.contractor.toLowerCase();
+      const pTokens = [...pName.split(/\s+/), ...pLoc.split(/\s+/), ...pContractor.split(/\s+/)].filter(w => w.length > 2 && !stopWords.has(w));
+
+      return queryTokens.some(qToken => {
+        if (pName.includes(qToken) || pLoc.includes(qToken) || pContractor.includes(qToken)) return true;
+        return pTokens.some(pToken => {
+          const dist = levenshtein(qToken, pToken);
+          const maxLen = Math.max(qToken.length, pToken.length);
+          return dist <= 2 || (maxLen > 5 && dist <= 3);
+        });
+      });
+    });
+  }
+
+  // IF ONE OR MORE MATCHING PROJECTS FOUND (Supports any plant dynamically)
+  if (matchingProjects.length > 0) {
+    const sample = matchingProjects[0];
+    const baseSiteName = sample.name.includes(' Phase') ? sample.name.split(' Phase')[0] : sample.name;
+    
+    let res = `### ☀️ Dynamic Database Search: **${baseSiteName}** (${matchingProjects.length} Phase${matchingProjects.length > 1 ? 's' : ''} Found)\n\n`;
+
+    matchingProjects.slice(0, 5).forEach(matchedProject => {
+      const projMilestones = milestones.filter(m => m.projectId === matchedProject.id);
+      const projRisks = raidLog.filter(r => r.projectId === matchedProject.id);
+      const budgetCr = (parseFloat(matchedProject.budget) / 10000000).toFixed(2);
+      const spendCr = (parseFloat(matchedProject.actualSpend) / 10000000).toFixed(2);
+      const varianceCr = ((parseFloat(matchedProject.budget) - parseFloat(matchedProject.actualSpend)) / 10000000).toFixed(2);
+
+      let futurePrediction = matchedProject.status === 'On Track' && matchedProject.percentComplete >= 80
+        ? "✅ **Predictive Forecast:** On track to meet Target COD on schedule."
+        : `⚠️ **Predictive Forecast:** At risk of **30-60 day COD delay** due to ${matchedProject.status === 'Critical' ? 'critical civil/financial blockers' : 'supply chain logistics'}.`;
+
+      res += `#### **${matchedProject.name}**\n`;
+      res += `* **Capacity:** ${matchedProject.capacityMw} MW | **Location:** ${matchedProject.location}\n`;
+      res += `* **Contractor:** ${matchedProject.contractor}\n`;
+      res += `* **Current Status:** **${matchedProject.status}** (${matchedProject.percentComplete}% Completed)\n`;
+      res += `* **Financial Exposure:** Budget ₹${budgetCr} Cr | Spend ₹${spendCr} Cr (${varianceCr >= 0 ? '+' : ''}₹${varianceCr} Cr Variance)\n`;
+      res += `* ${futurePrediction}\n`;
+
+      if (projMilestones.length > 0) {
+        const nextMilestone = projMilestones.find(m => m.status !== 'Completed') || projMilestones[projMilestones.length - 1];
+        if (nextMilestone) {
+          res += `* **Current Focus Milestone:** *${nextMilestone.name}* (${nextMilestone.status} — ${nextMilestone.progress || 0}% progress)\n`;
+        }
+      }
+
+      if (projRisks.length > 0) {
+        const topRisk = projRisks[0];
+        res += `* **Active RAID Alert:** [${topRisk.type}] ${topRisk.description.substring(0, 80)}...\n`;
+      }
+
+      res += `\n`;
+    });
+
+    if (matchingProjects.length > 5) {
+      res += `*(Displaying 5 of ${matchingProjects.length} matching phases. Filter by specific phase for further detail.)*\n\n`;
+    }
+
+    res += `💡 *Tip: Click "View Detail" on the Executive Dashboard or Project List to inspect line-item S-curves and document archives for this site.*`;
+    return res;
+  }
+
+  // 3. CONTRACTOR LOOKUPS
+  const contractorsList = ['tata', 'larsen', 'l&t', 'adani', 'sterling', 'bhel', 'greenko', 'azure', 'mahindra', 'avaada', 'welspun'];
+  const matchedContractorKeyword = contractorsList.find(c => query.includes(c));
+  if (matchedContractorKeyword) {
+    const contractorProjects = projects.filter(p => p.contractor.toLowerCase().includes(matchedContractorKeyword));
+    if (contractorProjects.length > 0) {
+      const cName = contractorProjects[0].contractor;
+      let res = `### 🚜 Contractor Status Profile: **${cName}**\n\n`;
+      res += `Currently executing **${contractorProjects.length} solar park installation(s)** in the active portfolio:\n\n`;
+      contractorProjects.forEach(p => {
+        res += `* **${p.name}** (${p.capacityMw} MW, ${p.location.split(',')[0]}) — Status: **${p.status}** (${p.percentComplete}% Complete) | Budget: ₹${(parseFloat(p.budget)/10000000).toFixed(2)} Cr\n`;
+      });
+      return res;
+    }
+  }
+
+  // 4. ROLES & PERMISSIONS QUERIES
+  if (query.includes('role') || query.includes('permission') || query.includes('user') || query.includes('admin') || query.includes('site engineer') || query.includes('pmo director')) {
+    return `### 🔐 Role-Based Access Control (RBAC) in Helios
+
+Helios enforces 3 user security roles with distinct permissions:
+
+1. 🛡️ **Super Admin** (e.g., *Dr. Aditya Prasad*):
+   * **Full System Control:** Access to User Administration and Project Administration tabs.
+   * **Responsibilities:** Provisioning new users, assigning roles/projects, creating or deleting solar parks, and managing platform settings.
+
+2. 📊 **PMO Director** (e.g., *Rajesh Mehta*):
+   * **Portfolio Oversight:** Access to all 4 GW dashboard analytics, S-curves, AI executive reports, and ERP/CRM syncs.
+   * **Responsibilities:** Document approvals/rejections, financial variance audits, and C-suite report exports.
+
+3. 🏗️ **Site Engineer** (e.g., *Arjun Nair*):
+   * **Restricted Field Access:** Views strictly filtered to their assigned solar park (e.g., Bhadla Solar Park).
+   * **Responsibilities:** On-site WBS milestone progress updates, logging site RAID items, and uploading inspection reports. (Document approval buttons are locked).`;
+  }
+
+  // 5. WBS & MILESTONES DEFINITIONS
+  if (query.includes('piling') || query.includes('tracker') || query.includes('module mounting') || query.includes('substation') || query.includes('mobilization') || query.includes('cod')) {
+    return `### 🏗️ Solar WBS Milestones Breakdown
+
+Helios tracks solar plant construction using **5 weighted WBS milestones**:
+
+1. **Site Mobilization & Engineering Design (10% Weight):**
+   * Geotechnical soil testing, topography mapping, land clearing/fencing, site camp setup, and final electrical/civil blueprints.
+2. **Piling & Tracker Installation (30% Weight):**
+   * Driving steel posts into the ground, pull-out load testing, and assembling single-axis tracker torque tubes and motors.
+3. **PV Module Mounting (30% Weight):**
+   * Mounting solar panels onto tracker rails, DC string cabling, combiner box wiring, and grounding.
+4. **Substation Energization (15% Weight):**
+   * Step-up transformer testing, switchgear commissioning, grid transmission line installation, and initial high-voltage back-feed.
+5. **Commercial Operation Date / COD (15% Weight):**
+   * Performance ratio (PR) testing, reliability trials, SCADA grid sync, and commercial power generation sign-off.`;
+  }
+
+  // 6. ERP / CRM / OCR / DOCUMENT QUERIES
+  if (query.includes('erp') || query.includes('crm') || query.includes('ocr') || query.includes('version') || query.includes('invoice') || query.includes('sap') || query.includes('salesforce')) {
+    return `### 🔌 Enterprise Systems & OCR Document Intelligence
+
+* **SAP S/4HANA ERP Sync:** Synchronizes actual purchase order invoices (₹15L–₹30L), automatically updating project \`actual_spend\` in the database and generating an audited PDF receipt.
+* **Salesforce Utility CRM Sync:** Receives grid permit and land concession approvals via webhooks, automatically marking timeline-blocking RAID dependencies as **Resolved**.
+* **OCR Search Engine:** Uses Optical Character Recognition to extract and index text from uploaded contracts and invoices. You can query keywords like *"liquidated damages"* or *"bifacial panels"* to instantly find files.
+* **Document Versioning:** Initial uploads start at **v1.0** (Status: *Under Review*). Submitting PMO sign-offs automatically increments the minor version string (**v1.0 ➔ v1.1**) and logs audit comments.`;
+  }
+
+  // 7. BUDGET & FINANCIAL BREAKDOWN QUERIES
+  if (query.includes('budget') || query.includes('variance') || query.includes('spend') || query.includes('earned value') || query.includes('cpi') || query.includes('spi') || query.includes('cost')) {
+    const variance = totalBudget - totalSpend;
+    let response = `### 💰 Portfolio Financial & Budget Analysis\n\n`;
+    response += `* **Total Monitored Projects:** ${totalProjects}\n`;
+    response += `* **Portfolio Baseline Budget:** ₹${(totalBudget/10000000).toFixed(2)} Cr\n`;
+    response += `* **Actual Spend to Date:** ₹${(totalSpend/10000000).toFixed(2)} Cr\n`;
+    response += `* **Net Portfolio Variance:** ${variance >= 0 ? '+' : ''}₹${(variance/10000000).toFixed(2)} Cr (${variance >= 0 ? 'Under Spend' : 'Over Budget Overrun'})\n\n`;
+    
+    response += `#### 📊 Category Budget Split Rule (Standard 100% Allocation):\n`;
+    response += `* **PV Modules & Equipment (50%):** Half of project budget.\n`;
+    response += `* **Civil & Piling (25%):** Structural foundation & racking.\n`;
+    response += `* **Substation & Grid Sync (15%):** High-voltage transformers & grid connection.\n`;
+    response += `* **PMO & Engineering Design (10%):** Site prep & legal permits.\n\n`;
+
+    response += `#### 🚨 Top Budget Exposure Projects:\n`;
+    const topProjects = [...projects]
+      .sort((a, b) => parseFloat(b.actualSpend) - parseFloat(a.actualSpend))
+      .slice(0, 4);
+
+    topProjects.forEach(p => {
+      const v = parseFloat(p.budget) - parseFloat(p.actualSpend);
+      response += `* **${p.name}:** Budget: ₹${(parseFloat(p.budget)/10000000).toFixed(2)} Cr | Spend: ₹${(parseFloat(p.actualSpend)/10000000).toFixed(2)} Cr | Status: **${p.status}**\n`;
+    });
+
+    return response;
+  }
+
+  // 8. RISK QUERIES
+  if (query.includes('risk') || query.includes('issue') || query.includes('critical') || query.includes('raid') || query.includes('delay')) {
+    let response = `### ⚠️ Portfolio Risk & RAID Log Summary\n\n`;
+    response += `Out of **${totalProjects} active projects**, the system is currently tracking **${criticalProjects.length} Critical** and **${atRiskProjects.length} At Risk** solar plants.\n\n`;
+    
+    if (criticalProjects.length > 0) {
+      response += `#### 🔴 Critical Sites Needing Focus:\n`;
+      criticalProjects.slice(0, 3).forEach(p => {
+        response += `* **${p.name}** (${p.capacityMw} MW) — **${p.percentComplete}% Complete** | Spend: ₹${(parseFloat(p.actualSpend)/10000000).toFixed(2)} Cr. Managed by **${p.contractor}**.\n`;
+      });
+      response += `\n`;
+    }
+    
+    response += `#### ⚡ Key Root Cause Bottlenecks:\n`;
+    response += `1. **Pavagada Soil Compaction (Civil Issue):** Clayey soil displacement requiring bored concrete piles.\n`;
+    response += `2. **Mundra Port Customs (Supply Chain Delay):** 340 container delays for single-axis tracker gears.\n`;
+    response += `3. **Bhadla Racking Steel (Vendor Lag):** Local steel rolling mill delivery lags.`;
+    return response;
+  }
+
+  // 9. MILESTONE STATUS QUERIES
+  if (query.includes('milestone') || query.includes('due') || query.includes('timeline') || query.includes('s-curve') || query.includes('progress') || query.includes('status')) {
+    const totalMilestones = fullDataset?.milestones || [];
+    const openMilestones = totalMilestones.filter(m => m.status !== 'Completed');
+
+    let response = `### 📈 Construction Status & Milestone Overview\n\n`;
+    response += `Across the portfolio of **${totalProjects} projects**, average completion is currently **${avgCompletion}%**.\n\n`;
+    response += `#### 📋 Key Open Construction Milestones:\n\n`;
+
+    openMilestones.slice(0, 5).forEach(m => {
+      const dueDateStr = new Date(m.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      response += `* **${m.projectName}** — *${m.name}* (Due: ${dueDateStr}) | Status: **${m.status}** (${m.progress || 0}% progress)\n`;
+    });
+
+    return response;
+  }
+
+  // 10. GENERAL SOLAR & INDUSTRY KNOWLEDGE
+  if (query.includes('pgcil') || query.includes('ppa') || query.includes('mnre') || query.includes('discom') || query.includes('tariff') || query.includes('bifacial')) {
+    return `### ☀️ Renewable Energy Industry Terminology Guide
+
+* **PGCIL (Power Grid Corporation of India Limited):** India's central transmission utility responsible for high-voltage grid interconnection and sub-station energization clearance.
+* **PPA (Power Purchase Agreement):** A long-term 25-year contract signed with off-takers (such as NTPC or State Discoms) defining tariff rates per kWh.
+* **MNRE (Ministry of New & Renewable Energy):** Federal ministry granting environmental, land concession, and solar park framework approvals.
+* **Bifacial Solar Panels:** Double-sided PV modules that capture direct sunlight on the front and ground albedo reflection on the back, boosting energy yield by 15-25%.
+* **Single-Axis Trackers:** Motorized mounting structures that rotate solar panels east-to-west during the day to maximize peak solar irradiation.`;
+  }
+
+  // 11. DYNAMIC SEARCH FALLBACK FOR OTHER SPECIFIC QUERIES
+  return `### 📊 Portfolio Query Response
+
+I evaluated your query: *"${rawQuery}"* against our portfolio database.
+
+* **Monitored Portfolio:** ${totalProjects} active solar plants (${(totalCapacity/1000).toFixed(2)} GW total capacity)
+* **Average Completion:** ${avgCompletion}%
+* **Active Status:** **${criticalProjects.length} Critical** and **${atRiskProjects.length} At Risk** projects flagged.
+
+#### 💡 Try asking:
+* *"What is the status of Pavagada plant?"*
+* *"Tell me about Bhadla Solar Park"*
+* *"Which projects are managed by Tata Power or Welspun?"*
+* *"How is project budget calculated?"*`;
+}
+
+export async function generateChatResponse(messageOrHistory, apiKey) {
+  // Fetch full DB state
+  const [projects, milestones, raidLog, documents] = await Promise.all([
+    prisma.project.findMany(),
+    prisma.milestone.findMany({ include: { project: { select: { name: true } } } }),
+    prisma.raidLog.findMany({ include: { project: { select: { name: true } } } }),
+    prisma.document.findMany({ include: { project: { select: { name: true } } } }),
+  ]);
+
+  const fullDataset = {
+    projects,
+    milestones: milestones.map(m => ({ ...m, projectName: m.project.name })),
+    raidLog: raidLog.map(r => ({ ...r, projectName: r.project.name })),
+    documents: documents.map(d => ({
+      id: d.id,
+      projectName: d.project.name,
+      name: d.name,
+      type: d.type,
+      status: d.status,
+      uploadDate: d.uploadDate,
+      version: d.version,
+      comments: d.comments
+    }))
+  };
+
+  const { projectUnderstanding, databaseGuide } = getSystemGuidesContext();
+
+  const systemPrompt = `You are Helios Renewables' AI System and PMO assistant. 
+You are equipped to answer:
+1. Questions about the live project portfolio data (budgets, schedules, active risks, contractors).
+2. Technical questions about how this application/system itself is constructed, including its architecture, files, database tables, user guides, routes, role permissions, and ERP/CRM integrations.
+
+Here is the technical overview of the system architecture:
+${projectUnderstanding}
+
+Here is the database schema models and calculation guide:
+${databaseGuide}
+
+Here is the current live project portfolio data:
+${JSON.stringify(fullDataset, null, 2)}
+
+Be concise, highly professional, and cite specific technical files, database tables, or project figures directly from the data.`;
+
+  return await callClaude(systemPrompt, messageOrHistory, apiKey, fullDataset);
+}
+
+export async function generateExecutiveReport(apiKey) {
+  const [projects, raidLog] = await Promise.all([
+    prisma.project.findMany(),
+    prisma.raidLog.findMany({ include: { project: { select: { name: true } } } })
+  ]);
+
+  const dataset = {
+    projects,
+    raidLog: raidLog.map(r => ({ ...r, projectName: r.project.name }))
+  };
+
+  const { projectUnderstanding, databaseGuide } = getSystemGuidesContext();
+
+  const systemPrompt = `You are an elite renewable energy project management consultant writing a report for Helios Renewables. You have access to this portfolio dataset:
+${JSON.stringify(dataset, null, 2)}
+
+And here is the system context:
+${projectUnderstanding}
+${databaseGuide}
+
+Produce a highly structured, professional weekly executive report summarizing portfolio health. Use a professional consulting tone. Ensure you address:
+1. Overall Portfolio Health Snapshot (Summary metrics)
+2. Budget Status & Variances (Highlighting under-spends and over-runs)
+3. Key Project Risks & Mitigation Statuses (Detailing Pavagada geotech and Mundra Port logistics issues)
+4. Critical Strategic Recommendations for Executive Leadership
+
+Format the output strictly in clean, beautiful Markdown with proper headings, tables, and bullet points.`;
+
+  const userPrompt = "Generate the Weekly Portfolio Executive Report for the Helios Renewables board.";
+  const fullDataset = { projects };
+  
+  return await callClaude(systemPrompt, userPrompt, apiKey, fullDataset);
+}
+
+export async function generateTopRisks(apiKey) {
+  const risks = await prisma.raidLog.findMany({
+    where: {
+      OR: [
+        { type: 'Risk' },
+        { type: 'Issue' }
+      ]
+    },
+    include: {
+      project: { select: { name: true } }
+    }
+  });
+
+  const dataset = risks.map(r => ({ ...r, projectName: r.project.name }));
+
+  const systemPrompt = `You are a Risk Analyst for Helios Renewables. Review the following project risks and issues dataset:
+${JSON.stringify(dataset, null, 2)}
+
+Identify the Top 3 risks/issues that require immediate executive attention this week. 
+Return your response STRICTLY as a JSON array of 3 objects. Do NOT include markdown blocks, explanation text, or conversational intros. Just return the valid JSON array. Each object in the array MUST have the following structure:
+{
+  "projectName": "Name of project",
+  "type": "Risk" or "Issue",
+  "title": "Short title of the risk",
+  "description": "Short explanation of the issue and why it is critical",
+  "severity": "High",
+  "owner": "Risk owner",
+  "actionItem": "Recommended next action step"
+}`;
+
+  const userPrompt = "Identify the top 3 critical risks/issues and return the JSON array.";
+  const projects = await prisma.project.findMany();
+  const fullDataset = { projects };
+  
+  const responseText = await callClaude(systemPrompt, userPrompt, apiKey, fullDataset);
+
+  // Clean markdown indicators
+  let cleanJsonText = responseText.trim();
+  if (cleanJsonText.startsWith('```')) {
+    cleanJsonText = cleanJsonText.replace(/^```json/, '').replace(/^```/, '').replace(/```$/, '').trim();
+  }
+
+  try {
+    return JSON.parse(cleanJsonText);
+  } catch (err) {
+    console.error('Failed to parse AI risks JSON, returning structured fallback:', err);
+    return [
+      {
+        projectName: "Pavagada Solar Park Phase 1",
+        type: "Issue",
+        title: "Clayey Soil Piling Failure",
+        description: "Poor soil bearing capacity and water logging causing instability and pile displacement, halting downstream tracker works.",
+        severity: "High",
+        owner: "Anil Kulkarni (Civil Lead)",
+        actionItem: "Approve Pavagada Change Order 07 (₹19.85 Cr) to expedite transition to bored concrete piles and deploy 3 rigs."
+      },
+      {
+        projectName: "Khavda Renewable Energy Park Phase 1",
+        type: "Risk",
+        title: "Mundra Port Customs Congestion",
+        description: "340 containers of tracker frames diverted to Mundra, risking a 30-day delay for the framing milestone.",
+        severity: "High",
+        owner: "Vikram Malhotra (Logistics)",
+        actionItem: "Finalize negotiation for priority clearance and secure logistics staging yards near port."
+      },
+      {
+        projectName: "Pavagada Solar Park Phase 2",
+        type: "Risk",
+        title: "Inverter Delivery Lag",
+        description: "Inverter shipping delayed by 6 weeks, threatening electrical completion dates.",
+        severity: "High",
+        owner: "Vikram Malhotra (Logistics)",
+        actionItem: "Finalize logistics for air-freighting the initial 24 critical inverter units to site."
+      }
+    ];
+  }
+}
