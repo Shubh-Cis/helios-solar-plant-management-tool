@@ -58,5 +58,5 @@ app.use((req, res, next) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Node Express Server running on port ${PORT}`);
+  console.log(`Node Express Server running on port ${PORT}. Serving static assets from: ${distPath}`);
 });

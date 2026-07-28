@@ -10,7 +10,7 @@
     "dev": "vite",
     "server": "node api/server.js",
     "seed": "node api/seed.js",
-    "build": "npm --prefix api install && npx --yes prisma@5 generate --schema=api/prisma/schema.prisma && vite build && (mkdir -p api/dist && cp -r dist/* api/dist || true)",
+    "build": "rm -rf dist api/dist && npm --prefix api install && npx --yes prisma@5 generate --schema=api/prisma/schema.prisma && vite build && (mkdir -p api/dist && cp -r dist/* api/dist || true)",
     "start": "npx --yes prisma@5 db push --schema=api/prisma/schema.prisma && node api/seed.js && node api/server.js",
     "lint": "eslint .",
     "preview": "vite preview"
