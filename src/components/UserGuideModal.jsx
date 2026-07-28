@@ -81,7 +81,8 @@ export default function UserGuideModal({ isOpen, onClose }) {
       description: 'Helios features several dedicated sidebar portals designed to streamline project management for users:',
       details: [
         'Executive Dashboard: Comprehensive portfolio financials, aggregate S-Curves, and interactive Risk Heatmaps.',
-        'Project Details: View detailed timelines, individual WBS checklists, and OCR-extracted document comments.',
+        'Master Gantt Schedule: Professional EPC Gantt chart with Critical Path, Baseline Variance, and WBS level 3 tracking.',
+        'Project Details: View interactive Gantt charts, WBS checklists, and OCR-extracted document comments.',
         'ERP & CRM Hub: Manually trigger corporate integrations and monitor transaction sync ledgers.',
         'User Administration (Admin): Provisions new user credentials, emails, roles, and project-scopes.',
         'Project Administration (Admin): Registers new solar projects, sets budgets, and auto-generates construction milestones.',

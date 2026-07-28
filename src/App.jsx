@@ -17,7 +17,8 @@ import {
   Users,
   HelpCircle,
   UserCheck,
-  Landmark
+  Landmark,
+  BarChart3
 } from 'lucide-react';
 import DashboardView from './components/DashboardView';
 import ProjectDetailView from './components/ProjectDetailView';
@@ -31,6 +32,7 @@ import UserGuideModal from './components/UserGuideModal';
 import AIChatbot from './components/AIChatbot';
 import QuickStartView from './components/QuickStartView';
 import FinancialAuditView from './components/FinancialAuditView';
+import PortfolioGanttView from './components/PortfolioGanttView';
 import LoginView from './components/LoginView';
 import './App.css';
 
@@ -176,6 +178,7 @@ function App() {
             <span className="px-3 text-[9px] font-bold text-slate-500 uppercase tracking-widest block mb-1">📁 Portfolio Command</span>
             {renderNavItem('quickstart', <HelpCircle className="h-4.5 w-4.5 text-teal-400" />, 'Quick Start Guide')}
             {renderNavItem('dashboard', <LayoutDashboard className="h-4.5 w-4.5" />, 'Executive Portfolio')}
+            {renderNavItem('gantt', <BarChart3 className="h-4.5 w-4.5 text-teal-400" />, 'Master Gantt Schedule')}
           </div>
 
           <div className="space-y-1 pt-2">
@@ -344,6 +347,14 @@ function App() {
               />
             )}
 
+            {currentView === 'gantt' && (
+              <PortfolioGanttView 
+                projects={projectsList}
+                onSelectProject={handleSelectProject}
+                userRole={userRole}
+              />
+            )}
+
             {currentView === 'risks' && <RiskComplianceView userRole={userRole} />}
             
             {currentView === 'documents' && <DocumentManagementView userRole={userRole} />}
@@ -390,6 +401,7 @@ function App() {
                 <span className="px-3 text-[9px] font-bold text-slate-500 uppercase tracking-widest block mb-1">📁 Portfolio Command</span>
                 {renderNavItem('quickstart', <HelpCircle className="h-4.5 w-4.5 text-teal-400" />, 'Quick Start Guide')}
                 {renderNavItem('dashboard', <LayoutDashboard className="h-4.5 w-4.5" />, 'Executive Portfolio')}
+                {renderNavItem('gantt', <BarChart3 className="h-4.5 w-4.5 text-teal-400" />, 'Master Gantt Schedule')}
               </div>
 
               <div className="space-y-1 pt-2">

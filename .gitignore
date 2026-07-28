@@ -37,7 +37,9 @@ pnpm-debug.log*
 # Railway CLI Config
 .railway/
 
-# Editor & System Files
+# Scratch files
+scratch/
+
 .DS_Store
 Thumbs.db
 .vscode/*

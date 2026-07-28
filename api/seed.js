@@ -2,6 +2,11 @@ import prisma from './prisma.js';
 
 async function seedData() {
   try {
+    const existingCount = await prisma.project.count();
+    if (existingCount > 0) {
+      console.log(`Database already populated with ${existingCount} projects. Skipping seed.`);
+      return;
+    }
     console.log('Cleaning existing database records via Prisma...');
     
     // Clear in reverse dependency order

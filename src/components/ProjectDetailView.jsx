@@ -12,13 +12,17 @@ import {
   HelpCircle,
   FileText,
   Plus,
-  Download
+  Download,
+  Calendar,
+  BarChart3,
+  Layers
 } from 'lucide-react';
+import GanttChartView from './GanttChartView';
 
 export default function ProjectDetailView({ projectId, onBack, userRole }) {
   const [projectData, setProjectData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('timeline');
+  const [activeTab, setActiveTab] = useState('gantt');
 
   // Site Manager RAID insertion Form State
   const [newRaidType, setNewRaidType] = useState('Risk');
@@ -427,16 +431,29 @@ ${doc.ocrText || doc.ocr_text || 'No OCR text available.'}
       {/* Main Tabs Container */}
       <div className="bg-white border border-slate-100 rounded-xl shadow-sm overflow-hidden">
         {/* Navigation Tabs */}
-        <div className="flex border-b border-slate-100 bg-slate-50">
+        <div className="flex border-b border-slate-100 bg-slate-50 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('gantt')}
+            className={`px-4 py-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${
+              activeTab === 'gantt'
+                ? 'border-teal-600 text-teal-950 bg-white shadow-sm'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <BarChart3 className="h-4 w-4 text-teal-600" />
+            <span>Interactive Gantt Chart</span>
+            <span className="bg-teal-100 text-teal-800 text-[9px] px-1.5 py-0.2 rounded-full font-extrabold uppercase">EPC Schedule</span>
+          </button>
           <button
             onClick={() => setActiveTab('timeline')}
-            className={`px-4 py-3 text-xs font-semibold border-b-2 transition-all ${
+            className={`px-4 py-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
               activeTab === 'timeline'
                 ? 'border-slate-950 text-slate-950 bg-white'
                 : 'border-transparent text-slate-400 hover:text-slate-600'
             }`}
           >
-            WBS Timeline & Milestones
+            <Clock className="h-3.5 w-3.5" />
+            <span>WBS Checklist</span>
           </button>
           <button
             onClick={() => setActiveTab('raid')}
@@ -462,6 +479,23 @@ ${doc.ocrText || doc.ocr_text || 'No OCR text available.'}
 
         {/* Tab Content */}
         <div className="p-6">
+          {/* Tab 0: Interactive Gantt Chart */}
+          {activeTab === 'gantt' && (
+            <GanttChartView 
+              project={projectData?.project}
+              milestones={milestones}
+              userRole={userRole}
+              onUpdateMilestone={handleMilestoneStatusChange}
+              onRefresh={() => {
+                // Refresh project data
+                fetch(`/api/projects/${projectId}`)
+                  .then(res => res.json())
+                  .then(data => setProjectData(data))
+                  .catch(err => console.error(err));
+              }}
+            />
+          )}
+
           {/* Tab 1: WBS Timeline */}
           {activeTab === 'timeline' && (
             <div className="space-y-6">
