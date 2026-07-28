@@ -31,20 +31,19 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/erp-crm', erpCrmRoutes);
 
-// Bulletproof dynamic multi-path resolution for React Vite build directory
-const possibleDistPaths = [
-  path.resolve(process.cwd(), 'dist'),
-  path.resolve(process.cwd(), '../dist'),
-  path.resolve(__dirname, '../dist'),
-  path.resolve(__dirname, '../../dist'),
-  path.resolve(__dirname, './dist'),
-  '/app/dist',
-  '/app/api/dist'
-];
+// Priority dist resolution for React Vite single-page build
+const rootDist = path.resolve(process.cwd(), 'dist');
+const apiDist = path.resolve(__dirname, './dist');
+const parentDist = path.resolve(__dirname, '../dist');
 
-const distPath = fs.existsSync(path.resolve(process.cwd(), 'dist/index.html'))
-  ? path.resolve(process.cwd(), 'dist')
-  : (possibleDistPaths.find(p => fs.existsSync(path.join(p, 'index.html'))) || possibleDistPaths[0]);
+let distPath = rootDist;
+if (fs.existsSync(path.join(rootDist, 'index.html'))) {
+  distPath = rootDist;
+} else if (fs.existsSync(path.join(apiDist, 'index.html'))) {
+  distPath = apiDist;
+} else if (fs.existsSync(path.join(parentDist, 'index.html'))) {
+  distPath = parentDist;
+}
 
 app.use(express.static(distPath));
 
