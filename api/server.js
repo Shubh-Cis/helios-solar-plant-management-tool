@@ -42,7 +42,9 @@ const possibleDistPaths = [
   '/app/api/dist'
 ];
 
-const distPath = possibleDistPaths.find(p => fs.existsSync(path.join(p, 'index.html'))) || possibleDistPaths[0];
+const distPath = fs.existsSync(path.resolve(process.cwd(), 'dist/index.html'))
+  ? path.resolve(process.cwd(), 'dist')
+  : (possibleDistPaths.find(p => fs.existsSync(path.join(p, 'index.html'))) || possibleDistPaths[0]);
 
 app.use(express.static(distPath));
 
