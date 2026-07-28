@@ -4,9 +4,9 @@ providers = ["node"]
 nixPkgs = ["nodejs_22"]
 
 [phases.install]
-cmds = ["NODE_ENV=development npm install"]
+cmds = ["PUPPETEER_SKIP_DOWNLOAD=true npm install --legacy-peer-deps"]
 
 [variables]
-NODE_ENV = "development"
 NIXPACKS_NODE_VERSION = "22"
 NPM_CONFIG_PRODUCTION = "false"
+PUPPETEER_SKIP_DOWNLOAD = "true"
