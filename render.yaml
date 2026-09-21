@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: helios-solar-plant
+    runtime: node
+    plan: free
+    buildCommand: PUPPETEER_SKIP_DOWNLOAD=true npm install --legacy-peer-deps && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: DATABASE_URL
+        sync: false

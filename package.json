@@ -16,7 +16,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@prisma/client": "^5.21.0",
+    "@prisma/client": "^5.22.0",
     "@tailwindcss/vite": "^4.0.0",
     "@vitejs/plugin-react": "^6.0.3",
     "cors": "^2.8.5",
@@ -26,7 +26,7 @@
     "lucide-react": "^0.468.0",
     "pdf-parse": "^2.4.5",
     "pdfkit": "^0.19.1",
-    "prisma": "^5.21.0",
+    "prisma": "^5.22.0",
     "puppeteer": "^25.3.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",

@@ -35,6 +35,7 @@ app.use('/api/erp-crm', erpCrmRoutes);
 const rootDist = path.resolve(process.cwd(), 'dist');
 const apiDist = path.resolve(__dirname, './dist');
 const parentDist = path.resolve(__dirname, '../dist');
+const possibleDistPaths = [rootDist, apiDist, parentDist];
 
 let distPath = rootDist;
 if (fs.existsSync(path.join(rootDist, 'index.html'))) {
