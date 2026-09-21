@@ -15,8 +15,19 @@ import {
   Download,
   Calendar,
   BarChart3,
-  Layers
+  Layers,
+  TrendingUp
 } from 'lucide-react';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer
+} from 'recharts';
 import GanttChartView from './GanttChartView';
 
 export default function ProjectDetailView({ projectId, onBack, userRole }) {
@@ -310,6 +321,12 @@ ${doc.ocrText || doc.ocr_text || 'No OCR text available.'}
     spiBadge = '🟡 Minor Schedule Lag';
   }
 
+  const formattedSCurve = (sCurve || []).map(item => ({
+    month: item.month,
+    Planned: item.plannedProgress !== null && item.plannedProgress !== undefined ? parseFloat(item.plannedProgress) : 0,
+    Actual: item.actualProgress !== null && item.actualProgress !== undefined ? parseFloat(item.actualProgress) : null
+  }));
+
   return (
     <div className="space-y-6">
       {/* Back Header */}
@@ -445,6 +462,18 @@ ${doc.ocrText || doc.ocr_text || 'No OCR text available.'}
             <span className="bg-teal-100 text-teal-800 text-[9px] px-1.5 py-0.2 rounded-full font-extrabold uppercase">EPC Schedule</span>
           </button>
           <button
+            onClick={() => setActiveTab('scurve')}
+            className={`px-4 py-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 ${
+              activeTab === 'scurve'
+                ? 'border-teal-600 text-teal-950 bg-white shadow-sm'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <TrendingUp className="h-4 w-4 text-teal-600" />
+            <span>S-Curve Tracker</span>
+            <span className="bg-teal-100 text-teal-800 text-[9px] px-1.5 py-0.2 rounded-full font-extrabold uppercase">EVM Curve</span>
+          </button>
+          <button
             onClick={() => setActiveTab('timeline')}
             className={`px-4 py-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
               activeTab === 'timeline'
@@ -494,6 +523,121 @@ ${doc.ocrText || doc.ocr_text || 'No OCR text available.'}
                   .catch(err => console.error(err));
               }}
             />
+          )}
+
+          {/* Tab: S-Curve Speed Tracker */}
+          {activeTab === 'scurve' && (
+            <div className="space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-slate-900">
+                      Physical Progress S-Curve — {project.name}
+                    </h3>
+                    <span className="text-[10px] bg-teal-50 text-teal-800 font-bold px-2 py-0.5 rounded border border-teal-200">
+                      {project.capacityMw} MW · {project.contractor}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Compares EPC baseline planned milestones against actual verified field progress (% completion over time).
+                  </p>
+                </div>
+                <div className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold shrink-0 border ${
+                  spiVal < 1.0 ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                }`}>
+                  <span className={`h-2.5 w-2.5 rounded-full animate-pulse ${spiVal < 1.0 ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
+                  <span>
+                    July 2026: {project.percentComplete}% Actual vs {currentMonthCurve?.plannedProgress || 80}% Target ({spiBadge})
+                  </span>
+                </div>
+              </div>
+
+              <div className="h-[280px] w-full text-xs">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={formattedSCurve} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                    <XAxis 
+                      dataKey="month" 
+                      tickFormatter={(v) => v.split('-')[1] + '/' + v.split('-')[0]} 
+                      tick={{ fill: '#475569', fontSize: 11, fontWeight: 600 }} 
+                      tickLine={false} 
+                    />
+                    <YAxis 
+                      domain={[0, 100]} 
+                      tick={{ fill: '#475569', fontSize: 11, fontWeight: 600 }} 
+                      tickLine={false} 
+                      unit="%" 
+                    />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#0f172a', color: '#fff', borderRadius: '10px', border: 'none', fontSize: '12px', padding: '10px 14px' }}
+                      labelStyle={{ fontWeight: 'bold', color: '#38bdf8', marginBottom: '4px' }}
+                      formatter={(value, name) => [`${value}%`, name === 'Planned' ? 'Planned Master Target (Baseline Schedule)' : 'Actual Field Progress (Physical Sign-off)']}
+                    />
+                    <Legend 
+                      iconType="circle" 
+                      wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }}
+                      formatter={(value) => value === 'Planned' ? 'Planned Baseline Target (Grey Line)' : 'Actual Field Progress (Teal Line)'}
+                    />
+                    <Line type="monotone" dataKey="Planned" name="Planned" stroke="#94a3b8" strokeWidth={2.5} dot={{ r: 4 }} />
+                    <Line type="monotone" dataKey="Actual" name="Actual" stroke="#14b8a6" strokeWidth={3.5} activeDot={{ r: 7 }} dot={{ r: 4 }} connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Quick Legend & Rule Guide */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 border border-slate-100 p-3 rounded-lg text-xs text-slate-600">
+                <div className="flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full bg-slate-400 shrink-0"></span>
+                  <span><strong>Grey Line:</strong> Contractual target schedule committed with EPC.</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full bg-teal-500 shrink-0"></span>
+                  <span><strong>Teal Line:</strong> Verified civil, electrical, and mechanical completion.</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-amber-600 font-bold shrink-0">⚠️ Rule:</span>
+                  <span>Teal below Grey indicates late milestone risk before COD penalty hits.</span>
+                </div>
+              </div>
+
+              {/* Earned Value Performance Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-slate-50 border border-slate-100 p-3.5 rounded-xl">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Schedule Velocity (SPI)</span>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className={`text-xl font-extrabold ${spiColor}`}>{spiVal.toFixed(2)}</span>
+                    <span className="text-[10px] font-bold">{spiBadge}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+                    SPI is {spiVal}. {spiVal >= 1.0 ? 'Work execution velocity is on or ahead of schedule.' : 'Site progress is lagging behind planned contractual pace.'}
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-100 p-3.5 rounded-xl">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Spending Efficiency (CPI)</span>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className={`text-xl font-extrabold ${cpiColor}`}>{cpiVal.toFixed(2)}</span>
+                    <span className="text-[10px] font-bold">{cpiBadge}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+                    CPI is {cpiVal}. {cpiVal >= 1.0 ? 'Spending is highly efficient relative to work completed.' : 'Expenditure is running ahead of physical completion.'}
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-100 p-3.5 rounded-xl">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Commercial Target (COD)</span>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-lg font-bold text-slate-900">{new Date(project.endDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${project.status === 'On Track' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                      {project.status}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+                    Target Commercial Operation Date. Contracted with {project.contractor}.
+                  </p>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Tab 1: WBS Timeline */}
