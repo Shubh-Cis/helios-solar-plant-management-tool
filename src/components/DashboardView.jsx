@@ -88,6 +88,7 @@ export default function DashboardView({ onSelectProject, onViewChange, userRole,
   const [tablePage, setTablePage] = useState(0);
   const [tableStatusFilter, setTableStatusFilter] = useState('All');
   const [selectedRiskCell, setSelectedRiskCell] = useState({ severity: 'High', likelihood: 'Medium' });
+  const [selectedSCurveProjectId, setSelectedSCurveProjectId] = useState('all');
 
   const handleUrgentRisksClick = () => {
     setTableStatusFilter('At Risk / Critical');
@@ -245,31 +246,41 @@ export default function DashboardView({ onSelectProject, onViewChange, userRole,
       };
     });
 
-  // Dynamically calculate live average percent complete from active database projects
+  // Selected S-Curve Project Filter Logic
+  const isAllProjects = selectedSCurveProjectId === 'all';
+  const selectedSCurveProject = isAllProjects
+    ? null
+    : projects.find(p => p.id === parseInt(selectedSCurveProjectId));
+
+  // Dynamically calculate live average percent complete from active database projects or selected project
   const livePortfolioAvg = projects.length > 0
     ? Math.round((projects.reduce((sum, p) => sum + (p.percentComplete || 0), 0) / projects.length) * 10) / 10
     : 76.5;
 
-  const plannedCurrentTarget = 81.2;
-  const currentScheduleLag = Math.max(0, (plannedCurrentTarget - livePortfolioAvg).toFixed(1));
-  const isScheduleLagging = livePortfolioAvg < plannedCurrentTarget;
+  const activeActual = isAllProjects
+    ? livePortfolioAvg
+    : (selectedSCurveProject?.percentComplete || 0);
 
-  // Aggregate S-Curve Data dynamically from live projects
+  const plannedCurrentTarget = 81.2;
+  const currentScheduleLag = Math.max(0, (plannedCurrentTarget - activeActual).toFixed(1));
+  const isScheduleLagging = activeActual < plannedCurrentTarget;
+
+  // Aggregate S-Curve Data dynamically from live projects or specific project
   const months = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12'];
   
   const sCurveData = months.map(m => {
-    const ratio = livePortfolioAvg / 76.5;
+    const scale = activeActual / 81.2;
 
     const monthlyMapping = {
-      '2026-01': { planned: 48.0, actual: Math.round(48.5 * ratio * 10) / 10 },
-      '2026-02': { planned: 53.0, actual: Math.round(52.8 * ratio * 10) / 10 },
-      '2026-03': { planned: 58.5, actual: Math.round(57.9 * ratio * 10) / 10 },
-      '2026-04': { planned: 63.5, actual: Math.round(62.4 * ratio * 10) / 10 },
-      '2026-05': { planned: 68.0, actual: Math.round(67.0 * ratio * 10) / 10 },
-      '2026-06': { planned: 72.5, actual: Math.round(71.2 * ratio * 10) / 10 },
-      '2026-07': { planned: 76.0, actual: Math.round(74.0 * ratio * 10) / 10 },
-      '2026-08': { planned: 78.5, actual: Math.round(75.5 * ratio * 10) / 10 },
-      '2026-09': { planned: plannedCurrentTarget, actual: livePortfolioAvg },
+      '2026-01': { planned: 48.0, actual: Math.round(Math.min(activeActual, 48.0 * scale * 1.02) * 10) / 10 },
+      '2026-02': { planned: 53.0, actual: Math.round(Math.min(activeActual, 53.0 * scale * 1.01) * 10) / 10 },
+      '2026-03': { planned: 58.5, actual: Math.round(Math.min(activeActual, 58.5 * scale * 1.00) * 10) / 10 },
+      '2026-04': { planned: 63.5, actual: Math.round(Math.min(activeActual, 63.5 * scale * 0.99) * 10) / 10 },
+      '2026-05': { planned: 68.0, actual: Math.round(Math.min(activeActual, 68.0 * scale * 0.98) * 10) / 10 },
+      '2026-06': { planned: 72.5, actual: Math.round(Math.min(activeActual, 72.5 * scale * 0.98) * 10) / 10 },
+      '2026-07': { planned: 76.0, actual: Math.round(Math.min(activeActual, 76.0 * scale * 0.97) * 10) / 10 },
+      '2026-08': { planned: 78.5, actual: Math.round(Math.min(activeActual, 78.5 * scale * 0.98) * 10) / 10 },
+      '2026-09': { planned: plannedCurrentTarget, actual: activeActual },
       '2026-10': { planned: 86.0, actual: null },
       '2026-11': { planned: 92.0, actual: null },
       '2026-12': { planned: 98.0, actual: null },
@@ -537,9 +548,11 @@ export default function DashboardView({ onSelectProject, onViewChange, userRole,
               <div className="flex items-center gap-2.5 flex-wrap">
                 <h3 className="text-base font-bold text-slate-900">Project Speed Tracker (S-Curve)</h3>
                 <span className="text-xs bg-slate-100 text-slate-700 font-bold px-2.5 py-0.5 rounded-full border border-slate-200">
-                  {userRole === 'Site Engineer' && projects.length === 1
-                    ? `📍 Scope: ${projects[0].name}`
-                    : `🌐 Scope: National Solar Portfolio Average (All 50 Solar Parks)`}
+                  {selectedSCurveProject
+                    ? `📍 Scope: ${selectedSCurveProject.name}`
+                    : (userRole === 'Site Engineer' && projects.length === 1
+                        ? `📍 Scope: ${projects[0].name}`
+                        : `🌐 Scope: National Solar Portfolio Average (All 50 Solar Parks)`)}
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-1">
@@ -547,14 +560,57 @@ export default function DashboardView({ onSelectProject, onViewChange, userRole,
               </p>
             </div>
 
-            {/* Live Progress Status Callout Pill */}
-            <div className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold shrink-0 shadow-xs border ${
-              isScheduleLagging
-                ? 'bg-amber-50 border-amber-200 text-amber-900'
-                : 'bg-emerald-50 border-emerald-200 text-emerald-900'
-            }`}>
-              <span className={`h-2.5 w-2.5 rounded-full animate-pulse ${isScheduleLagging ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
-              <span>September 2026: {livePortfolioAvg}% Actual vs {plannedCurrentTarget}% Target ({isScheduleLagging ? `🟡 ${currentScheduleLag}% Schedule Lag` : '🟢 On Schedule'})</span>
+            {/* Filter Dropdown & Live Progress Status Pill */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg shadow-2xs">
+                <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider shrink-0">Filter Plant:</span>
+                <select
+                  value={selectedSCurveProjectId}
+                  onChange={(e) => setSelectedSCurveProjectId(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer max-w-[200px] sm:max-w-[230px] truncate"
+                >
+                  <option value="all">🌐 All 50 Plants (Portfolio Average)</option>
+                  <optgroup label="⚠️ Need Focus (Critical & At Risk)">
+                    {projects
+                      .filter(p => p.status === 'Critical' || p.status === 'At Risk')
+                      .map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.status === 'Critical' ? '🔴' : '🟡'} {p.name} ({p.percentComplete}%)
+                        </option>
+                      ))}
+                  </optgroup>
+                  <optgroup label="🟢 On Track Projects">
+                    {projects
+                      .filter(p => p.status === 'On Track')
+                      .map(p => (
+                        <option key={p.id} value={p.id}>
+                          🟢 {p.name} ({p.percentComplete}%)
+                        </option>
+                      ))}
+                  </optgroup>
+                </select>
+                {selectedSCurveProjectId !== 'all' && (
+                  <button
+                    onClick={() => setSelectedSCurveProjectId('all')}
+                    className="text-[10px] font-bold text-teal-700 hover:text-teal-900 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded cursor-pointer shrink-0"
+                    title="Reset to portfolio average"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+
+              {/* Live Progress Status Callout Pill */}
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 shadow-xs border ${
+                isScheduleLagging
+                  ? 'bg-amber-50 border-amber-200 text-amber-900'
+                  : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+              }`}>
+                <span className={`h-2.5 w-2.5 rounded-full animate-pulse ${isScheduleLagging ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
+                <span>
+                  September 2026: {activeActual}% Actual vs {plannedCurrentTarget}% Target ({isScheduleLagging ? `🟡 ${currentScheduleLag}% Schedule Lag` : '🟢 On Schedule'})
+                </span>
+              </div>
             </div>
           </div>
 
@@ -569,7 +625,7 @@ export default function DashboardView({ onSelectProject, onViewChange, userRole,
                   tickLine={false} 
                 />
                 <YAxis 
-                  domain={[40, 100]} 
+                  domain={[30, 100]} 
                   tick={{ fill: '#475569', fontSize: 11, fontWeight: 600 }} 
                   tickLine={false} 
                   unit="%"
@@ -607,32 +663,130 @@ export default function DashboardView({ onSelectProject, onViewChange, userRole,
           </div>
 
           {/* Dynamic AI Root Cause Schedule Lag Diagnosis Panel */}
-          {isScheduleLagging && (
-            <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3.5 space-y-2.5">
+          {isAllProjects ? (
+            isScheduleLagging && (
+              <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full bg-amber-600 animate-ping"></span>
+                    <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider">
+                      🔍 Why Is Construction Running {currentScheduleLag}% Behind Target? (Portfolio Root Cause Analysis)
+                    </h4>
+                  </div>
+                  <span className="text-[11px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-200">
+                    5 Critical & 7 At Risk Sites Need Leadership Focus
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                  <div className="bg-white border border-amber-100 p-3 rounded-lg space-y-1.5 shadow-2xs flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-amber-900">1. Raghanesda Solar Park Phase 1 (40% Complete — 🔴 Critical Lag)</span>
+                        <span className="text-[9px] bg-rose-100 text-rose-800 font-bold px-1.5 py-0.5 rounded">Welspun Energy</span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 leading-relaxed mt-1">
+                        Substation 220kV transmission line interconnection approval delayed by state electricity transmission company. Halts final inverter energization.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSCurveProjectId(10)}
+                      className="self-start text-[11px] font-bold text-teal-700 hover:text-teal-900 hover:underline flex items-center gap-1 cursor-pointer pt-1"
+                    >
+                      <span>Inspect Raghanesda on S-Curve</span>
+                      <span>→</span>
+                    </button>
+                  </div>
+
+                  <div className="bg-white border border-amber-100 p-3 rounded-lg space-y-1.5 shadow-2xs flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-amber-900">2. Kamuthi Solar Sanctuary Phase 1 (65% Complete — 🟡 At Risk)</span>
+                        <span className="text-[9px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.5 rounded">Avaada Energy</span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 leading-relaxed mt-1">
+                        340 containers of single-axis tracker torque frames delayed at Mundra Port customs inspection yards, creating a 45-day downstream assembly lag.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSCurveProjectId(6)}
+                      className="self-start text-[11px] font-bold text-teal-700 hover:text-teal-900 hover:underline flex items-center gap-1 cursor-pointer pt-1"
+                    >
+                      <span>Inspect Kamuthi on S-Curve</span>
+                      <span>→</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quick Selection Tag Bar for Flagged Projects */}
+                <div className="pt-2 border-t border-amber-200/60 flex items-center gap-2 flex-wrap text-[11px]">
+                  <span className="font-bold text-amber-900">Click to filter S-Curve by site needing focus:</span>
+                  {projects
+                    .filter(p => p.status === 'Critical' || p.status === 'At Risk')
+                    .slice(0, 5)
+                    .map(p => (
+                      <button
+                        type="button"
+                        key={p.id}
+                        onClick={() => setSelectedSCurveProjectId(p.id)}
+                        className={`px-2 py-0.5 rounded-full font-bold border cursor-pointer transition-all ${
+                          p.status === 'Critical'
+                            ? 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100'
+                            : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                        }`}
+                      >
+                        {p.status === 'Critical' ? '🔴' : '🟡'} {p.name.split(' Solar')[0]} ({p.percentComplete}%)
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )
+          ) : (
+            /* Selected Specific Project AI Diagnosis */
+            <div className={`border rounded-xl p-3.5 space-y-2.5 ${
+              isScheduleLagging ? 'bg-amber-50/80 border-amber-200' : 'bg-emerald-50/80 border-emerald-200'
+            }`}>
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-amber-600 animate-ping"></span>
-                  <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider">
-                    🔍 Why Is Construction Running {currentScheduleLag}% Behind Target? (Root Cause Analysis)
+                  <span className={`h-2.5 w-2.5 rounded-full animate-ping ${isScheduleLagging ? 'bg-amber-600' : 'bg-emerald-600'}`}></span>
+                  <h4 className={`text-xs font-bold uppercase tracking-wider ${isScheduleLagging ? 'text-amber-900' : 'text-emerald-900'}`}>
+                    🔍 Site AI Diagnosis — {selectedSCurveProject?.name}
                   </h4>
                 </div>
-                <span className="text-[11px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-200">
-                  5 Critical & 7 At Risk Sites Flagged
-                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSCurveProjectId('all')}
+                  className="text-xs font-bold text-teal-800 hover:text-teal-950 bg-white border border-slate-200 px-2.5 py-1 rounded-md shadow-2xs cursor-pointer flex items-center gap-1"
+                >
+                  <span>↩️ View Portfolio Average (All 50 Plants)</span>
+                </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                <div className="bg-white border border-amber-100 p-3 rounded-lg space-y-1 shadow-2xs">
-                  <span className="font-bold text-amber-900 block">1. Civil & Soil Displacement (Pavagada Sites — 60 Day Impact)</span>
-                  <p className="text-[11px] text-slate-600 leading-relaxed">
-                    Clayey soil bearing capacity failure halting driven steel posts; awaiting PMO sign-off for bored concrete pile change orders.
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                <div className="bg-white border border-slate-100 p-3 rounded-lg shadow-2xs">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Performance Status</span>
+                  <p className="text-sm font-bold text-slate-900 mt-0.5">
+                    {selectedSCurveProject?.percentComplete}% Complete ({selectedSCurveProject?.status})
+                  </p>
+                  <p className={`text-[11px] font-semibold mt-1 ${isScheduleLagging ? 'text-amber-700' : 'text-emerald-700'}`}>
+                    {isScheduleLagging ? `⚠️ Running ${currentScheduleLag}% behind September target` : '🟢 Milestones tracking on schedule'}
                   </p>
                 </div>
 
-                <div className="bg-white border border-amber-100 p-3 rounded-lg space-y-1 shadow-2xs">
-                  <span className="font-bold text-amber-900 block">2. Mundra Customs Tracker Clearance (Khavda Sites — 45 Day Impact)</span>
-                  <p className="text-[11px] text-slate-600 leading-relaxed">
-                    340 containers of single-axis tracker torque frames delayed at Mundra Port customs inspection yards.
+                <div className="bg-white border border-slate-100 p-3 rounded-lg shadow-2xs">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Assigned Contractor</span>
+                  <p className="text-sm font-bold text-slate-900 mt-0.5">{selectedSCurveProject?.contractor}</p>
+                  <p className="text-[11px] text-slate-500 mt-1">{selectedSCurveProject?.location}</p>
+                </div>
+
+                <div className="bg-white border border-slate-100 p-3 rounded-lg shadow-2xs">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">AI Recommended PMO Action</span>
+                  <p className="text-[11px] text-slate-700 font-medium mt-1 leading-relaxed">
+                    {isScheduleLagging
+                      ? `Escalate milestone sign-off with ${selectedSCurveProject?.contractor}. Deploy accelerated civil shifts and expedite procurement clearances to recover ${currentScheduleLag}% lag before COD penalty.`
+                      : `Maintain current civil and electrical velocity. Execution meets contractual milestones under ${selectedSCurveProject?.contractor}.`}
                   </p>
                 </div>
               </div>
