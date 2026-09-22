@@ -305,8 +305,8 @@ ${doc.ocrText || doc.ocr_text || 'No OCR text available.'}
   }
 
   // SPI
-  // Get planned progress for current month (July 2026) from sCurve if exists, otherwise default to 85%
-  const currentMonthCurve = sCurve && sCurve.find(s => s.month === '2026-07');
+  // Get planned progress for current month (September 2026) from sCurve if exists, otherwise fallback
+  const currentMonthCurve = sCurve && (sCurve.find(s => s.month === '2026-09') || sCurve.find(s => s.month === '2026-07') || sCurve[sCurve.length - 1]);
   const plannedProgressPct = currentMonthCurve ? parseFloat(currentMonthCurve.plannedProgress) / 100 : 0.85;
   const spiVal = plannedProgressPct > 0 ? parseFloat((progressPercent / plannedProgressPct).toFixed(2)) : 1.0;
   
@@ -547,7 +547,7 @@ ${doc.ocrText || doc.ocr_text || 'No OCR text available.'}
                 }`}>
                   <span className={`h-2.5 w-2.5 rounded-full animate-pulse ${spiVal < 1.0 ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
                   <span>
-                    July 2026: {project.percentComplete}% Actual vs {currentMonthCurve?.plannedProgress || 80}% Target ({spiBadge})
+                    September 2026: {project.percentComplete}% Actual vs {currentMonthCurve?.plannedProgress || 80}% Target ({spiBadge})
                   </span>
                 </div>
               </div>

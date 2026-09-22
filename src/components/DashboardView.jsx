@@ -250,29 +250,29 @@ export default function DashboardView({ onSelectProject, onViewChange, userRole,
     ? Math.round((projects.reduce((sum, p) => sum + (p.percentComplete || 0), 0) / projects.length) * 10) / 10
     : 76.5;
 
-  const plannedCurrentTarget = 79.8;
+  const plannedCurrentTarget = 81.2;
   const currentScheduleLag = Math.max(0, (plannedCurrentTarget - livePortfolioAvg).toFixed(1));
   const isScheduleLagging = livePortfolioAvg < plannedCurrentTarget;
 
   // Aggregate S-Curve Data dynamically from live projects
-  const months = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11'];
+  const months = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12'];
   
   const sCurveData = months.map(m => {
-    // Dynamic ratio scaling based on current month (2026-07) actual progress
-    const ratio = livePortfolioAvg / 77.2;
+    const ratio = livePortfolioAvg / 76.5;
 
     const monthlyMapping = {
-      '2026-01': { planned: 55.4, actual: Math.round(56.1 * ratio * 10) / 10 },
-      '2026-02': { planned: 59.8, actual: Math.round(60.1 * ratio * 10) / 10 },
-      '2026-03': { planned: 63.8, actual: Math.round(64.0 * ratio * 10) / 10 },
-      '2026-04': { planned: 68.0, actual: Math.round(68.2 * ratio * 10) / 10 },
-      '2026-05': { planned: 71.9, actual: Math.round(72.0 * ratio * 10) / 10 },
-      '2026-06': { planned: 75.8, actual: Math.round(75.1 * ratio * 10) / 10 },
-      '2026-07': { planned: plannedCurrentTarget, actual: livePortfolioAvg },
-      '2026-08': { planned: 83.9, actual: null },
-      '2026-09': { planned: 87.5, actual: null },
-      '2026-10': { planned: 91.0, actual: null },
-      '2026-11': { planned: 94.6, actual: null },
+      '2026-01': { planned: 48.0, actual: Math.round(48.5 * ratio * 10) / 10 },
+      '2026-02': { planned: 53.0, actual: Math.round(52.8 * ratio * 10) / 10 },
+      '2026-03': { planned: 58.5, actual: Math.round(57.9 * ratio * 10) / 10 },
+      '2026-04': { planned: 63.5, actual: Math.round(62.4 * ratio * 10) / 10 },
+      '2026-05': { planned: 68.0, actual: Math.round(67.0 * ratio * 10) / 10 },
+      '2026-06': { planned: 72.5, actual: Math.round(71.2 * ratio * 10) / 10 },
+      '2026-07': { planned: 76.0, actual: Math.round(74.0 * ratio * 10) / 10 },
+      '2026-08': { planned: 78.5, actual: Math.round(75.5 * ratio * 10) / 10 },
+      '2026-09': { planned: plannedCurrentTarget, actual: livePortfolioAvg },
+      '2026-10': { planned: 86.0, actual: null },
+      '2026-11': { planned: 92.0, actual: null },
+      '2026-12': { planned: 98.0, actual: null },
     };
 
     return {
@@ -554,7 +554,7 @@ export default function DashboardView({ onSelectProject, onViewChange, userRole,
                 : 'bg-emerald-50 border-emerald-200 text-emerald-900'
             }`}>
               <span className={`h-2.5 w-2.5 rounded-full animate-pulse ${isScheduleLagging ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
-              <span>July 2026: {livePortfolioAvg}% Actual vs {plannedCurrentTarget}% Target ({isScheduleLagging ? `🟡 ${currentScheduleLag}% Schedule Lag` : '🟢 On Schedule'})</span>
+              <span>September 2026: {livePortfolioAvg}% Actual vs {plannedCurrentTarget}% Target ({isScheduleLagging ? `🟡 ${currentScheduleLag}% Schedule Lag` : '🟢 On Schedule'})</span>
             </div>
           </div>
 
